@@ -1,1 +1,7 @@
-# Backend dependencies will be added after architecture approval.
+# Initial backend dependencies for NoteNest.
+# Pin compatible versions after the team selects and tests the runtime.
+Flask
+firebase-admin
+python-dotenv
+flask-cors
+pytest
