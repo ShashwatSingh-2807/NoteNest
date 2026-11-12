@@ -1,114 +1,77 @@
-# Entity Relationship Diagram
+# NoteNest Logical Data Model
 
-**Status:** Proposed v1.0 — matches [database-design.md](database-design.md).  
-**Database:** SQLite with Flask-SQLAlchemy.
+**Status:** Proposed v1.0 — aligned with [database-design.md](database-design.md).  
+**Data platform:** Cloud Firestore + Firebase Authentication + Firebase Storage.
 
-## ER diagram
+Firestore is document-oriented, so this is a logical relationship diagram rather than a relational SQL ER diagram. References are document ID fields, not enforced foreign keys.
 
-```mermaid
-erDiagram
-    USERS ||--o{ RESOURCES : uploads
-    USERS o|--o{ RESOURCES : reviews
-    USERS ||--o{ RESOURCE_DOWNLOADS : makes
-    SEMESTERS ||--o{ SUBJECTS : contains
-    SUBJECTS ||--o{ MODULES : contains
-    SUBJECTS ||--o{ RESOURCES : classifies
-    MODULES o|--o{ RESOURCES : groups
-    RESOURCES ||--o{ RESOURCE_DOWNLOADS : has
-
-    USERS {
-        int id PK
-        string full_name
-        string email UK
-        string password_hash
-        string role
-        boolean is_active
-        datetime created_at
-        datetime updated_at
-    }
-
-    SEMESTERS {
-        int id PK
-        int semester_number UK
-        string name
-        datetime created_at
-    }
-
-    SUBJECTS {
-        int id PK
-        int semester_id FK
-        string subject_code UK
-        string name
-        string description
-        datetime created_at
-    }
-
-    MODULES {
-        int id PK
-        int subject_id FK
-        int module_number
-        string name
-        datetime created_at
-    }
-
-    RESOURCES {
-        int id PK
-        string title
-        string description
-        string resource_type
-        string original_filename
-        string storage_key UK
-        string mime_type
-        int file_size_bytes
-        int subject_id FK
-        int module_id FK
-        int uploaded_by FK
-        string status
-        int reviewed_by FK
-        datetime reviewed_at
-        string rejection_reason
-        datetime created_at
-        datetime updated_at
-    }
-
-    RESOURCE_DOWNLOADS {
-        int id PK
-        int resource_id FK
-        int user_id FK
-        datetime downloaded_at
-    }
-```
-
-## Relationship explanation
-
-| Relationship | Cardinality | Meaning |
-|---|---|---|
-| Semester → Subject | 1 : many | A semester contains multiple subjects; each subject belongs to one semester. |
-| Subject → Module | 1 : many | A subject can contain multiple modules; each module belongs to one subject. |
-| Subject → Resource | 1 : many | Each resource is classified under one subject. |
-| Module → Resource | 1 : many, optional on resource | A resource may be for a specific module or the whole subject. |
-| User → Resource (uploader) | 1 : many | A student can submit multiple resources. |
-| User → Resource (reviewer) | 1 : many, optional on resource | An admin can review multiple resources; pending resources have no reviewer yet. |
-| User → Resource Download | 1 : many | A user can download many resources. |
-| Resource → Resource Download | 1 : many | A resource can be downloaded many times. |
-
-## Moderation lifecycle
+## Logical relationship diagram
 
 ```mermaid
 flowchart TD
-    A[Student submits resource] --> B[Pending]
-    B --> C{Admin review}
-    C -->|Approve| D[Approved and visible]
-    C -->|Reject with reason| E[Rejected and not visible]
+    AUTH[Firebase Authentication]
+    USER[users/{uid} profile and role]
+    SEM[semesters/{semesterId}]
+    SUB[subjects/{subjectId}]
+    MOD[modules/{moduleId}]
+    RES[resources/{resourceId} metadata and moderation]
+    DL[resource_downloads/{downloadId}]
+    FILE[Firebase Storage object]
+
+    AUTH -->|UID identifies| USER
+    SEM -->|semesterId| SUB
+    SUB -->|subjectId| MOD
+    SEM -->|semesterId filter reference| RES
+    SUB -->|subjectId| RES
+    MOD -.->|optional moduleId| RES
+    USER -->|uploadedBy UID| RES
+    USER -.->|reviewedBy admin UID| RES
+    USER -->|userId| DL
+    RES -->|resourceId| DL
+    RES -->|storagePath| FILE
 ```
 
-- New submissions always begin as `pending`.
-- Only an administrator can approve or reject a submission.
-- Only `approved` resources are searchable and downloadable by students.
-- If the team adopts the proposed edit policy, editing an approved resource sends it back to `pending`.
+## Collections
 
-## Important integrity rule
+| Collection | Document ID | Purpose |
+|---|---|---|
+| `users` | Firebase Auth UID | Application profile, role, account status |
+| `semesters` | Generated/deterministic ID | Academic semester catalog |
+| `subjects` | Generated/deterministic ID | Subject catalog; contains `semesterId` |
+| `modules` | Generated/deterministic ID | Module catalog; contains `subjectId` |
+| `resources` | Generated ID | Resource metadata, references, and moderation state |
+| `resource_downloads` | Generated ID | Successful download activity |
 
-When a resource has both `subject_id` and `module_id`, the backend must ensure that the selected module belongs to that same subject. This cross-table rule should be validated by the application (or enforced with an additional composite foreign-key design if the team later chooses to add it).
+## External Firebase Services
 
-The diagram and table definitions are proposed for team review. Do not create migrations until the team approves the schema and open decisions in [database-design.md](database-design.md).
+- **Firebase Authentication:** stores account identity and credentials. Passwords are not stored in Firestore.
+- **Firebase Storage:** stores actual resource files. Firestore stores the `storagePath` only.
+
+## Resource moderation lifecycle
+
+```mermaid
+flowchart TD
+    A[Student submits file and metadata] --> B[Backend validates and stores file]
+    B --> C[Firestore resource status: pending]
+    C --> D{Admin review}
+    D -->|Approve| E[status: approved]
+    D -->|Reject with reason| F[status: rejected]
+    E --> G[Visible and downloadable by students]
+    F --> H[Not visible or downloadable by students]
+```
+
+## Integrity Rules
+
+- A subject's `semesterId` must reference an existing semester.
+- A module's `subjectId` must reference an existing subject.
+- A resource's `semesterId` and `subjectId` must be consistent.
+- If a resource has a `moduleId`, that module must belong to the same subject.
+- `uploadedBy` must be derived from the verified Firebase ID token, not request input.
+- Only a trusted admin can set `reviewedBy`, `reviewedAt`, `status`, and `rejectionReason`.
+- A resource's `storagePath` must be generated by the backend and refer to its stored object.
+
+## Important Difference from SQL
+
+Firestore does not automatically enforce foreign keys, joins, or relational uniqueness constraints. Flask must validate document references and uniqueness rules. Query patterns may require composite indexes, which should be committed in `firestore.indexes.json` after they are finalized.
+
+See [database-design.md](database-design.md) for field-level document shapes and implementation rules.
