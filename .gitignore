@@ -218,3 +218,18 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# JavaScript / frontend
+node_modules/
+dist/
+.vite/
+
+# Local secrets and databases
+.env.*
+!.env.example
+*.sqlite
+*.sqlite3
+
+# OS files
+.DS_Store
+Thumbs.db
