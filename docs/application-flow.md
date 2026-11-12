@@ -1,28 +1,48 @@
 # Application Flow
 
-**Status:** Initial outline. Update after UI/UX finalization.
+**Status:** Conceptual flow for team review. Update after UI/UX finalization.
 
-## Student Flow
+## Student Authentication Flow
 1. Student opens NoteNest.
-2. Student registers or logs in.
-3. Student reaches the resource discovery area.
-4. Student browses or searches by academic category.
-5. Student opens resource details.
-6. Student downloads the resource if access is permitted.
-7. Student may submit a resource with metadata.
+2. Student registers or signs in through Firebase Authentication in the frontend.
+3. Frontend obtains a Firebase ID token.
+4. Frontend calls the Flask profile/bootstrap endpoint with the ID token.
+5. Flask verifies the token and creates or retrieves the student's Firestore profile.
+6. Student enters the resource discovery area.
+
+Firebase Authentication handles credentials and password reset; Flask does not implement a separate password/login system.
+
+## Browse and Download Flow
+1. Student browses the academic catalog.
+2. Student searches or filters resources by semester, subject, module, or resource type.
+3. Flask returns approved resource metadata from Firestore.
+4. Student opens resource details.
+5. Student requests a download.
+6. Flask verifies identity, checks that the resource is approved, and authorizes delivery from Firebase Storage.
+7. The successful download is recorded in Firestore.
 
 ## Resource Submission Flow
-1. Authenticated student selects upload.
-2. Student provides a file and academic metadata.
-3. The system validates the submission.
-4. The submission enters the agreed moderation process, if enabled.
-5. An administrator reviews it.
-6. The resource is published or rejected according to the decision.
+1. Authenticated student opens the upload form.
+2. Student selects a file and enters resource metadata.
+3. Frontend submits the file and metadata to Flask with the Firebase ID token.
+4. Flask verifies identity, validates metadata and file content, and checks academic references.
+5. Flask stores the file in Firebase Storage.
+6. Flask creates a Firestore resource document with `pending` status.
+7. Student can view the submission status in their own uploads.
 
-## Admin Flow
-1. Administrator signs in with an authorized account.
-2. Administrator accesses permitted management functions.
-3. Administrator manages academic categories and reviews submissions.
-4. Administrator takes an allowed action.
+## Admin Moderation Flow
+1. Admin signs in through Firebase Authentication using an account provisioned with admin privileges.
+2. Frontend obtains an ID token and calls Flask admin endpoints.
+3. Flask verifies the token and checks the trusted admin role.
+4. Admin views pending submissions and inspects resource details.
+5. Admin approves or rejects the submission.
+6. Flask records the decision, reviewer UID, timestamp, and rejection reason when applicable.
+7. Approved resources become visible/downloadable to students; rejected resources remain unavailable.
 
-This is a conceptual flow, not a final screen specification. Exact navigation, error states, and permissions will be finalized with the Figma prototype and PRD.
+## Admin Catalog and User Management
+1. Admin accesses protected management screens.
+2. Admin creates/updates/deactivates semesters, subjects, and modules.
+3. Admin may view or deactivate user access where permitted.
+4. Flask enforces all role and ownership rules.
+
+Exact screen navigation, public/private catalog access, edit/delete permissions, and file delivery method remain subject to the approved PRD and API contract.
